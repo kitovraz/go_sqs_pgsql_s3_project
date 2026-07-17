@@ -10,7 +10,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func newPostgresDb(conf *config.Config) (*sql.DB, error) {
+func NewPostgresDb(conf *config.Config) (*sql.DB, error) {
 	dsn := conf.DatabaseUrl()
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
