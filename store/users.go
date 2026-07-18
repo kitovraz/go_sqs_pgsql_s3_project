@@ -43,7 +43,7 @@ func NewUserStore(db *sql.DB) *UserStore {
 }
 
 func (s *UserStore) CreateUser(ctx context.Context, email, password string) (*User, error) {
-	const dml = "insert into users(email, hashed_password) values ($1, $2)"
+	const dml = "insert into users(email, hashed_password) values ($1, $2) returning id, email, hashed_password, created_at"
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

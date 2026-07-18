@@ -22,7 +22,7 @@ func TestUserStore(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	m, err := migrate.New(fmt.Sprintf("file:///%s/db/migrations", cfg.ProjectRoot), cfg.DatabaseUrl())
+	m, err := migrate.New(fmt.Sprintf("file://%s/db/migrations", cfg.ProjectRoot), cfg.DatabaseUrl())
 	require.NoError(t, err)
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		require.NoError(t, err)
@@ -30,6 +30,14 @@ func TestUserStore(t *testing.T) {
 
 	email := "testing@test.com"
 	testingPassword := "testingpassword"
+
+	// Ensure a clean slate so re-runs don't collide on the unique email.
+	_, err = db.Exec("DELETE FROM users WHERE email = $1", email)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = db.Exec("DELETE FROM users WHERE email = $1", email)
+	})
+
 	userStore := NewUserStore(db)
 	user, err := userStore.CreateUser(context.Background(), email, testingPassword)
 	require.NoError(t, err)

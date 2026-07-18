@@ -27,3 +27,6 @@ services:
 
 volumes:
   postgres_data:
+
+  
+# psql postgresql://admin:secret@127.0.0.1:5432/asyncapi?sslmode=disable
