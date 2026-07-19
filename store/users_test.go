@@ -1,47 +1,48 @@
-package store
+package store_test
 
 import (
 	"context"
-	"fmt"
-	"go_sqs_pqsql_s3_project/config"
-	"os"
+	"go_sqs_pqsql_s3_project/config/fixtures"
+	"go_sqs_pqsql_s3_project/store"
 	"testing"
+	"time"
 
-	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUserStore(t *testing.T) {
-	os.Setenv("ENV", string(config.Env_Test))
-	cfg, err := config.New()
-	require.NoError(t, err)
-
-	db, err := NewPostgresDb(cfg)
-	require.NoError(t, err)
-	defer db.Close()
-
-	m, err := migrate.New(fmt.Sprintf("file://%s/db/migrations", cfg.ProjectRoot), cfg.DatabaseUrl())
-	require.NoError(t, err)
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		require.NoError(t, err)
-	}
-
+	ctx := context.Background()
+	now := time.Now()
 	email := "testing@test.com"
 	testingPassword := "testingpassword"
 
-	// Ensure a clean slate so re-runs don't collide on the unique email.
-	_, err = db.Exec("DELETE FROM users WHERE email = $1", email)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = db.Exec("DELETE FROM users WHERE email = $1", email)
+	testEnv := fixtures.NewTestEnv(t)
+	teardownDb := testEnv.SetupDb(t)
+	defer t.Cleanup(func() {
+		teardownDb(t)
 	})
 
-	userStore := NewUserStore(db)
-	user, err := userStore.CreateUser(context.Background(), email, testingPassword)
+	userStore := store.NewUserStore(testEnv.Db)
+	user, err := userStore.CreateUser(ctx, email, testingPassword)
 	require.NoError(t, err)
+	require.Less(t, now, user.CreatedAt)
 
 	require.Equal(t, email, user.Email)
 	require.NoError(t, user.ComparePassword(testingPassword))
+
+	user2, err := userStore.ById(ctx, user.Id)
+	require.NoError(t, err)
+	require.Equal(t, user.Email, user2.Email)
+	require.Equal(t, user.Id, user2.Id)
+	require.Equal(t, user.HashedPasswordBase64, user2.HashedPasswordBase64)
+	require.Equal(t, user.CreatedAt, user2.CreatedAt)
+
+	user3, err := userStore.ByEmail(ctx, user.Email)
+	require.NoError(t, err)
+	require.Equal(t, user.Email, user3.Email)
+	require.Equal(t, user.Id, user3.Id)
+	require.Equal(t, user.HashedPasswordBase64, user3.HashedPasswordBase64)
+	require.Equal(t, user.CreatedAt, user3.CreatedAt)
 }
