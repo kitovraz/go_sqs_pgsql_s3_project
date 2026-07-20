@@ -47,3 +47,5 @@ func (te *TestEnv) TeardownDb(t *testing.T) {
 	_, err := te.Db.Exec(fmt.Sprintf("truncate table %s", strings.Join([]string{"users", "refresh_tokens", "reports"}, ", ")))
 	require.NoError(t, err)
 }
+
+Оптимизировал работу сервиса авторизации в 7 раз путем разделения слоев, требующих и не требующих обращения к БД. Проблема была с пулом, который долго не отдавал коннекты к БД. Например, когда возникали ошибки отправки в брокер.
