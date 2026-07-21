@@ -4,6 +4,7 @@ import (
 	"context"
 	"go_sqs_pqsql_s3_project/config"
 	"go_sqs_pqsql_s3_project/config/apiserver"
+	"go_sqs_pqsql_s3_project/store"
 	"log"
 	"log/slog"
 	"os"
@@ -25,11 +26,27 @@ func run() error {
 		return err
 	}
 
-	jsonHandler := slog.NewJSONHandler(os.Stdout, nil)
-	logger := slog.New(jsonHandler)
-	apiserver := apiserver.New(config, logger)
+	dataStore, err := dataStore(config)
+	if err != nil {
+		return err
+	}
+
+	apiserver := apiserver.New(config, logger(), dataStore)
 	if err := apiserver.Start(ctx); err != nil {
 		return err
 	}
 	return nil
+}
+
+func logger() *slog.Logger {
+	jsonHandler := slog.NewJSONHandler(os.Stdout, nil)
+	return slog.New(jsonHandler)
+}
+
+func dataStore(config *config.Config) (*store.Store, error) {
+	db, err := store.NewPostgresDb(config)
+	if err != nil {
+		return nil, err
+	}
+	return store.New(db), nil
 }
