@@ -1,9 +1,13 @@
 package apiserver
 
 import (
+	"context"
+	"go_sqs_pqsql_s3_project/store"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 func NewLoggerMiddleware(logger *slog.Logger) func(next http.Handler) http.Handler {
@@ -13,5 +17,68 @@ func NewLoggerMiddleware(logger *slog.Logger) func(next http.Handler) http.Handl
 				logger.Info("Http requrest", "path", strings.Join([]string{r.Method, r.URL.Path}, " "))
 				next.ServeHTTP(w, r)
 			})
+	}
+}
+
+type userCtxKey struct{}
+
+func ContextWithUser(ctx context.Context, user *store.User) context.Context {
+	return context.WithValue(ctx, userCtxKey{}, user)
+}
+
+func NewAuthMiddleware(j *JwtManager, userStore *store.UserStore) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/auth") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			authHeadr := r.Header.Get("Authorization")
+			var token string
+			if parts := strings.Split(authHeadr, "Bearer "); len(parts) == 2 {
+				token = parts[1]
+			}
+			if token == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			parsedToken, err := j.Parse(token)
+			if err != nil {
+				slog.Error("failed to parse token", "error", err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			if !j.IsAccessToken(parsedToken) {
+				slog.Error("token is not access")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte("not an access token"))
+				return
+			}
+
+			userIdStr, err := parsedToken.Claims.GetSubject()
+			if err != nil {
+				slog.Error("failed to extract subject from token", "error", err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			userId, err := uuid.Parse(userIdStr)
+			if err != nil {
+				slog.Error("failed to parse token subject", "subject", userIdStr, "error", err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			user, err := userStore.ById(r.Context(), userId)
+			if err != nil {
+				slog.Error("failed to fetch user by id", "id", userId, "error", err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), user)))
+		})
 	}
 }
